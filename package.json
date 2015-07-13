@@ -17,8 +17,7 @@
   },
   "homepage": "https://github.com/taoyuan/configup#readme",
   "dependencies": {
-    "debug": "^2.2.0",
-    "lodash": "^3.10.0"
+    "debug": "^2.2.0"
   },
   "devDependencies": {
     "chai": "^3.0.0",
