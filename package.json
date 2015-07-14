@@ -2,7 +2,7 @@
   "name": "configup",
   "version": "0.1.2",
   "description": "Simple node.js config loader inspired by Loopback",
-  "main": "index.js",
+  "main": "./lib/index.js",
   "scripts": {
     "test": "mocha"
   },
