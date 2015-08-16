@@ -1,6 +1,6 @@
 {
   "name": "configup",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Simple node.js config loader inspired by Loopback",
   "main": "./lib/configup.js",
   "scripts": {
@@ -11,7 +11,7 @@
     "url": "git+https://github.com/taoyuan/configup.git"
   },
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/taoyuan/configup/issues"
   },
