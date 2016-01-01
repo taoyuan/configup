@@ -16,4 +16,9 @@ describe('configup', function () {
     t.notOk(config.bar);
     t.equal(config.foo, 'hello');
   });
+
+  it.only('should return undefined if no config files exists', function () {
+    var config = configup.loadDeepMerge(__dirname + '/fixtures/config/not_exist');
+    t.isUndefined(config);
+  });
 });
