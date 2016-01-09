@@ -1,3 +1,17 @@
+/**
+ * With JSON5
+ */
+
 {
-  "foo": "bar"
+  "foo": "bar",
+  this: 'is a \
+  multi-line string',
+
+  // this is an inline comment
+  here: 'is another', // inline comment
+
+  /* this is a block comment
+     that continues on another line */
+
+  hex: 0xDEADbeef
 }
