@@ -1,3 +1,3 @@
 # configup
 
-Simple node.js config loader inspired by Loopback
+> Simple node.js config loader inspired by Loopback
