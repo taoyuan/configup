@@ -2,7 +2,7 @@
   "name": "configup",
   "version": "1.1.0",
   "description": "Simple node.js config loader inspired by Loopback",
-  "main": "./lib/configup.js",
+  "main": "./index.js",
   "scripts": {
     "test": "mocha"
   },
@@ -17,12 +17,12 @@
   },
   "homepage": "https://github.com/taoyuan/configup#readme",
   "dependencies": {
-    "debug": "^2.2.0",
-    "json5": "^0.4.0",
-    "lodash.clonedeep": "^3.0.2"
+    "debug": "^2.6.6",
+    "json5": "^0.5.1",
+    "lodash.clonedeep": "^4.5.0"
   },
   "devDependencies": {
-    "chai": "^3.0.0",
-    "mocha": "^2.2.5"
+    "chai": "^3.5.0",
+    "mocha": "^3.3.0"
   }
 }

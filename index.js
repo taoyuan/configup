@@ -1,112 +1,105 @@
-var debug = require('debug')('configup');
-var path = require('path');
-var fs = require('fs');
-var Module = require('module');
-var cloneDeep = require('lodash.clonedeep');
-var json5 = require('json5');
+const debug = require('debug')('configup');
+const path = require('path');
+const fs = require('fs');
+const Module = require('module');
+const assert = require('assert');
+const json5 = require('json5');
 
-var FILE_EXTENSION_JSON = '.json';
+const FILE_EXTENSION_JSON = '.json';
+const JOSN_EXTS = ['.json', '.json5'];
 
-/**
- * Load named configuration.
- * @param {String} filename filename without ext
- * @param {String|Function} [env] Environment, usually `process.env.NODE_ENV`
- * @param {function(target:Object, config:Object, filename:String)} mergeFn
- * @returns {Object}
- */
-exports.load = load;
-function load(filename, env, mergeFn) {
-  if (typeof env === 'function') {
-    mergeFn = env;
-    env = "development";
-  }
-  var files = findConfigFiles(filename, env);
-  if (files.length) {
-    debug('found %s %s files', env, filename);
-    files.forEach(function (f) {
-      debug('  %s', f);
-    });
-  } else {
-    return;
-  }
-  var configs = loadConfigFiles(files);
-  var merged = mergeConfigurations(configs, mergeFn);
-
-  debug('merged %s %s configuration %j', env, filename, merged);
-
-  return merged;
-}
+module.exports = {
+  load,
+  findScripts,
+  resolveRelativePaths,
+  resolveAppScriptPath
+};
 
 
 /**
  *
- * @param filename
- * @param env
- * @param {Boolean} [strict] - merge base on the origin config file, ignore all keys that not in the origin config file.
+ * @param {String} rootDir
+ * @param {String} name
+ * @param {Object|String|Boolean} [options]
+ * @param {String} [options.env]
  * @returns {*}
  */
-exports.loadDeepMerge = loadDeepMerge;
-function loadDeepMerge(filename, env, strict) {
-  if (typeof env === 'boolean') {
-    strict = env;
-    env = undefined;
+function load(rootDir, name, options) {
+  if (typeof options === 'string') {
+    options = {env: options};
+  } else if (typeof options === 'function') {
+    options = {merge: options}
   }
-
-  function deepMerge(target, config, filename) {
-    var err = mergeObjects(target, config);
-    if (err) {
-      throw new Error('Cannot apply ' + filename + ': ' + err);
-    }
-  }
-
-  return load(filename, env, function (target, config, filename) {
-    if (!target) return;
-
-    if (strict) {
-      for (var key in target) {
-        if (typeof target[key] === 'object') {
-          deepMerge(target[key], config[key], filename);
-        } else {
-          target[key] = config[key];
-        }
-      }
-    } else {
-      deepMerge(target, config, filename);
-    }
-  });
+  options = options || {};
+  // const mergeFn = options.deepMerge ? deepMergeConfig(options.strict) : mergeConfig();
+  return loadNamed(rootDir, name, options.env, mergeConfig());
 }
 
-exports.hasConfigFiles = hasConfigFiles;
-function hasConfigFiles(filename, env) {
-  return findConfigFiles(filename, env).length > 0;
+/**
+ * Load named configuration.
+ * @param {String} rootDir Directory where to look for files.
+ * @param {String} name
+ * @param {String|Function} [env] Environment, usually `process.env.NODE_ENV`
+ * @param {function(target:Object, config:Object, filename:String)} [mergeFn]
+ * @returns {Object}
+ */
+function loadNamed(rootDir, name, env, mergeFn) {
+  if (typeof env === 'function') {
+    mergeFn = env;
+    env = undefined;
+  }
+  mergeFn = mergeFn || mergeConfig();
+  const files = findConfigFiles(rootDir, name, env);
+  if (files.length) {
+    debug('found %s %s files', env, name);
+    files.forEach(function(f) { debug('  %s', f); });
+  }
+  const configs = loadConfigFiles(files);
+  const merged = mergeConfigurations(configs, mergeFn);
+
+  debug('merged %s %s configuration %j', env, name, merged);
+
+  return merged;
 }
 
 /**
  * Search `appRootDir` for all files containing configuration for `name`.
- * @param {String} filename filename without ext
- * @param {String} env Environment, usually `process.env.NODE_ENV`
+ * @param {String} appRootDir
+ * @param {String} name
+ * @param {String} [env] Environment, usually `process.env.NODE_ENV`
  * @returns {Array.<String>} Array of absolute file paths.
  */
-function findConfigFiles(filename, env) {
-  var master = ifExists(filename + '.js') || ifExists(filename + '.json');
+function findConfigFiles(appRootDir, name, env) {
+  let master = ifExists(name + '.json');
+  if (!master) {
+    master = ifExists(name + '.json5');
+  }
+  if (!master && (ifExistsWithAnyExt(name + '.local') ||
+    ifExistsWithAnyExt(name + '.' + env))) {
+    console.warn('WARNING: Main config file "%s.json" is missing', name);
+  }
   if (!master) return [];
 
-  var candidates = [
+  const candidates = [
     master,
-    ifExistsWithAnyExt(filename + '.local'),
-    ifExistsWithAnyExt(filename + '.' + env)
+    ifExistsWithAnyExt(name + '.local'),
   ];
 
-  return candidates.filter(function (c) {
-    return c !== undefined;
-  });
+  if (env) {
+    candidates.push(ifExistsWithAnyExt(name + '.' + env));
+  }
+
+  candidates.push(ifExistsWithAnyExt(name + '.overrides'));
+
+  return candidates.filter(function(c) { return c !== undefined; });
 
   function ifExists(fileName) {
-    return fs.existsSync(fileName) ? fileName : undefined;
+    const filepath = path.resolve(appRootDir, fileName);
+    return fs.existsSync(filepath) ? filepath : undefined;
   }
 
   function ifExistsWithAnyExt(fileName) {
-    return ifExists(fileName + '.js') || ifExists(fileName + '.json');
+    return ifExists(fileName + '.js') || ifExists(fileName + '.json') || ifExists(fileName + '.json5');
   }
 }
 
@@ -118,11 +111,12 @@ function findConfigFiles(filename, env) {
  */
 function loadConfigFiles(files) {
   return files.map(function (f) {
-    var config = path.extname(f) === FILE_EXTENSION_JSON ? json5.parse(fs.readFileSync(f)) : require(f);
+    const config = JOSN_EXTS.includes(path.extname(f)) ? json5.parse(fs.readFileSync(f)) : require(f);
     Object.defineProperty(config, '_filename', {
       enumerable: false,
-      value: f
+      value: f,
     });
+    debug('loaded config file %s: %j', f, config);
     return config;
   });
 }
@@ -133,29 +127,60 @@ function loadConfigFiles(files) {
  * @param {function(target:Object, config:Object, filename:String)} mergeFn
  */
 function mergeConfigurations(configObjects, mergeFn) {
-  var result = cloneDeep(configObjects.shift()) || {};
+  const result = configObjects.shift() || {};
   while (configObjects.length) {
-    var next = configObjects.shift();
-    mergeFn(result, next, next['_filename']);
+    const next = configObjects.shift();
+    mergeFn(result, next, next._filename);
   }
   return result;
 }
 
+function mergeConfig() {
+  return (target, config, fileName) => {
+    const err = mergeObjects(target, config);
+    if (err) {
+      throw new Error(`Cannot apply ${fileName}: ${err}`);
+    }
+  };
+}
 
-exports.mergeObjects = mergeObjects;
+function deepMergeConfig(strict) {
+  function deepMerge(target, config, filename) {
+    const err = mergeObjects(target, config);
+    if (err) {
+      throw new Error('Cannot apply ' + filename + ': ' + err);
+    }
+  }
+
+  return (target, config, filename) => {
+    if (!target) return;
+
+    if (strict) {
+      for (const key in target) {
+        if (typeof target[key] === 'object') {
+          deepMerge(target[key], config[key], filename);
+        } else {
+          target[key] = config[key];
+        }
+      }
+    } else {
+      deepMerge(target, config, filename);
+    }
+  }
+}
+
 function mergeObjects(target, config, keyPrefix) {
-  for (var key in config) {
-    var fullKey = keyPrefix ? keyPrefix + '.' + key : key;
-    var err = mergeSingleItemOrProperty(target, config, key, fullKey);
+  for (const key in config) {
+    const fullKey = keyPrefix ? keyPrefix + '.' + key : key;
+    const err = mergeSingleItemOrProperty(target, config, key, fullKey);
     if (err) return err;
   }
   return null; // no error
 }
 
-exports.mergeSingleItemOrProperty = mergeSingleItemOrProperty;
 function mergeSingleItemOrProperty(target, config, key, fullKey) {
-  var origValue = target[key];
-  var newValue = config[key];
+  const origValue = target[key];
+  const newValue = config[key];
 
   if (!hasCompatibleType(origValue, newValue)) {
     return 'Cannot merge values of incompatible types for the option `' +
@@ -166,7 +191,7 @@ function mergeSingleItemOrProperty(target, config, key, fullKey) {
     return mergeArrays(origValue, newValue, fullKey);
   }
 
-  if (typeof origValue === 'object') {
+  if (newValue !== null && typeof origValue === 'object') {
     return mergeObjects(origValue, newValue, fullKey);
   }
 
@@ -174,7 +199,6 @@ function mergeSingleItemOrProperty(target, config, key, fullKey) {
   return null; // no error
 }
 
-exports.mergeArrays = mergeArrays;
 function mergeArrays(target, config, keyPrefix) {
   if (target.length !== config.length) {
     return 'Cannot merge array values of different length' +
@@ -182,16 +206,15 @@ function mergeArrays(target, config, keyPrefix) {
   }
 
   // Use for(;;) to iterate over undefined items, for(in) would skip them.
-  for (var ix = 0; ix < target.length; ix++) {
-    var fullKey = keyPrefix + '[' + ix + ']';
-    var err = mergeSingleItemOrProperty(target, config, ix, fullKey);
+  for (let ix = 0; ix < target.length; ix++) {
+    const fullKey = keyPrefix + '[' + ix + ']';
+    const err = mergeSingleItemOrProperty(target, config, ix, fullKey);
     if (err) return err;
   }
 
   return null; // no error
 }
 
-exports.hasCompatibleType = hasCompatibleType;
 function hasCompatibleType(origValue, newValue) {
   if (origValue === null || origValue === undefined)
     return true;
@@ -207,13 +230,7 @@ function hasCompatibleType(origValue, newValue) {
   return typeof newValue !== 'object';
 }
 
-exports.assertIsValidConfig = assertIsValidConfig;
-function assertIsValidConfig(name, config) {
-  if (config) {
-    assert(typeof config === 'object',
-      name + ' config must be a valid JSON object');
-  }
-}
+/*--  --*/
 
 /**
  * Find all javascript files (except for those prefixed with _)
@@ -222,11 +239,10 @@ function assertIsValidConfig(name, config) {
  * @return {Array.<String>} A list of absolute paths to pass to `require()`.
  * @private
  */
-exports.findScripts = findScripts;
 function findScripts(dir/*, extensions*/) {
   assert(dir, 'cannot require directory contents without directory name');
 
-  var files = tryReadDir(dir);
+  const files = tryReadDir(dir);
   //extensions = extensions || _.keys(require.extensions);
 
   // sort files in lowercase alpha for linux
@@ -243,15 +259,15 @@ function findScripts(dir/*, extensions*/) {
     }
   });
 
-  var results = [];
+  const results = [];
   files.forEach(function (filename) {
     // ignore index.js and files prefixed with underscore
     if (filename === 'index.js' || filename[0] === '_') {
       return;
     }
 
-    var filepath = path.resolve(path.join(dir, filename));
-    var stats = fs.statSync(filepath);
+    const filepath = path.resolve(path.join(dir, filename));
+    const stats = fs.statSync(filepath);
 
     // only require files supported by require.extensions (.txt .md etc.)
     if (stats.isFile()) {
@@ -276,9 +292,9 @@ function tryReadDir() {
 }
 
 function resolveAppPath(rootDir, relativePath, resolveOptions) {
-  var resolvedPath = tryResolveAppPath(rootDir, relativePath, resolveOptions);
+  const resolvedPath = tryResolveAppPath(rootDir, relativePath, resolveOptions);
   if (resolvedPath === undefined && !resolveOptions.optional) {
-    var err = new Error('Cannot resolve path "' + relativePath + '"');
+    const err = new Error('Cannot resolve path "' + relativePath + '"');
     err.code = 'PATH_NOT_FOUND';
     throw err;
   }
@@ -286,8 +302,8 @@ function resolveAppPath(rootDir, relativePath, resolveOptions) {
 }
 
 function tryResolveAppPath(rootDir, relativePath, resolveOptions) {
-  var fullPath;
-  var start = relativePath.substring(0, 2);
+  let fullPath;
+  const start = relativePath.substring(0, 2);
 
   /* In order to retain backward compatibility, we need to support
    * two ways how to treat values that are not relative nor absolute
@@ -298,7 +314,7 @@ function tryResolveAppPath(rootDir, relativePath, resolveOptions) {
    */
   resolveOptions = resolveOptions || {strict: true};
 
-  var isModuleRelative = false;
+  let isModuleRelative = false;
   if (relativePath[0] === '/') {
     fullPath = relativePath;
   } else if (start === './' || start === '..') {
@@ -331,17 +347,17 @@ function tryResolveAppPath(rootDir, relativePath, resolveOptions) {
   //   [ env.NODE_PATH values, $HOME/.node_modules, etc. ]
   // Module._nodeModulePaths(rootDir) returns a list of paths like
   //   [ rootDir/node_modules, rootDir/../node_modules, etc. ]
-  var modulePaths = Module.globalPaths
+  const modulePaths = Module.globalPaths
     .concat(Module._nodeModulePaths(rootDir));
 
   fullPath = modulePaths
     .map(function (candidateDir) {
-      var absPath = path.join(candidateDir, relativePath);
+      const absPath = path.join(candidateDir, relativePath);
       try {
         // NOTE(bajtos) We need to create a proper String object here,
         // otherwise we can't attach additional properties to it
         /*jshint -W053 */
-        var filePath = new String(require.resolve(absPath));
+        const filePath = String(require.resolve(absPath));
         filePath.unresolvedPath = absPath;
         return filePath;
       } catch (err) {
@@ -364,11 +380,10 @@ function tryResolveAppPath(rootDir, relativePath, resolveOptions) {
   return undefined;
 }
 
-exports.resolveRelativePaths = resolveRelativePaths;
 function resolveRelativePaths(relativePaths, appRootDir) {
-  var resolveOpts = {strict: false};
+  const resolveOpts = {strict: false};
   relativePaths.forEach(function (relativePath, k) {
-    var resolvedPath = tryResolveAppPath(appRootDir, relativePath, resolveOpts);
+    const resolvedPath = tryResolveAppPath(appRootDir, relativePath, resolveOpts);
     if (resolvedPath !== undefined) {
       relativePaths[k] = resolvedPath;
     } else {
@@ -385,31 +400,31 @@ function getExcludedExtensions() {
 }
 
 function isPreferredExtension(filename) {
-  var includeExtensions = require.extensions;
+  const includeExtensions = require.extensions;
 
-  var ext = path.extname(filename);
+  const ext = path.extname(filename);
   return (ext in includeExtensions) && !(ext in getExcludedExtensions());
 }
 
 function fixFileExtension(filepath, files, onlyScriptsExportingFunction) {
-  var results = [];
-  var otherFile;
+  const results = [];
+  let otherFile;
 
   /* Prefer coffee scripts over json */
   if (isPreferredExtension(filepath)) return filepath;
 
-  var basename = path.basename(filepath, FILE_EXTENSION_JSON);
-  var sourceDir = path.dirname(filepath);
+  const basename = path.basename(filepath, FILE_EXTENSION_JSON);
+  const sourceDir = path.dirname(filepath);
 
   files.forEach(function (f) {
     otherFile = path.resolve(sourceDir, f);
 
-    var stats = fs.statSync(otherFile);
+    const stats = fs.statSync(otherFile);
     if (stats.isFile()) {
-      var otherFileExtension = path.extname(f);
+      const otherFileExtension = path.extname(f);
 
       if (!(otherFileExtension in getExcludedExtensions()) &&
-        path.basename(f, otherFileExtension) == basename) {
+        path.basename(f, otherFileExtension) === basename) {
         if (!onlyScriptsExportingFunction)
           results.push(otherFile);
         else if (onlyScriptsExportingFunction &&
@@ -422,14 +437,13 @@ function fixFileExtension(filepath, files, onlyScriptsExportingFunction) {
   return (results.length > 0 ? results[0] : undefined);
 }
 
-exports.resolveAppScriptPath = resolveAppScriptPath;
 function resolveAppScriptPath(rootDir, relativePath, resolveOptions) {
-  var resolvedPath = resolveAppPath(rootDir, relativePath, resolveOptions);
+  const resolvedPath = resolveAppPath(rootDir, relativePath, resolveOptions);
   if (!resolvedPath) {
     return false;
   }
-  var sourceDir = path.dirname(resolvedPath);
-  var files = tryReadDir(sourceDir);
-  var fixedFile = fixFileExtension(resolvedPath, files, false);
+  const sourceDir = path.dirname(resolvedPath);
+  const files = tryReadDir(sourceDir);
+  const fixedFile = fixFileExtension(resolvedPath, files, false);
   return (fixedFile === undefined ? resolvedPath : fixedFile);
 }

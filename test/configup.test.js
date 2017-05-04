@@ -1,24 +1,16 @@
-var t = require('chai').assert;
-var configup = require('../');
+const assert = require('chai').assert;
+const configup = require('../');
 
 describe('configup', function () {
-  it('load with deep merge with default', function () {
-    var config = configup.loadDeepMerge(__dirname + '/fixtures/config/foo');
-    t.ok(config);
-    t.equal(config.foo, 'hello');
-    t.equal(config.bar, 'world');
-  });
-
-  it('load with deep merge with strict mode', function () {
-    var config = configup.loadDeepMerge(__dirname + '/fixtures/config/foo', true);
-    t.ok(config);
-    t.ok(config.foo);
-    t.notOk(config.bar);
-    t.equal(config.foo, 'hello');
+  it('load with with default', function () {
+    const config = configup.load(__dirname + '/fixtures/config', 'foo');
+    assert.ok(config);
+    assert.equal(config.foo, 'hello');
+    assert.equal(config.bar, 'world');
   });
 
   it('should return undefined if no config files exists', function () {
-    var config = configup.loadDeepMerge(__dirname + '/fixtures/config/not_exist');
-    t.isUndefined(config);
+    const config = configup.load(__dirname + '/fixtures/config', 'not_exist');
+    assert.deepEqual(config, {});
   });
 });
