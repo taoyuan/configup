@@ -1,6 +1,6 @@
 {
   "name": "configup",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Simple node.js config loader inspired by Loopback",
   "main": "./index.js",
   "scripts": {
