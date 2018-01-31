@@ -22,6 +22,7 @@ module.exports = {
  * @param {String} name
  * @param {Object|String|Boolean} [options]
  * @param {String} [options.env]
+ * @param {String} [options.merge]
  * @returns {*}
  */
 function load(rootDir, name, options) {
