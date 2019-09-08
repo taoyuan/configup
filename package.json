@@ -17,12 +17,12 @@
   },
   "homepage": "https://github.com/taoyuan/configup#readme",
   "dependencies": {
-    "debug": "^3.1.0",
-    "json5": "^0.5.1",
+    "debug": "^4.1.1",
+    "json5": "^2.1.0",
     "lodash.clonedeep": "^4.5.0"
   },
   "devDependencies": {
     "chai": "^4.1.2",
-    "mocha": "^5.0.0"
+    "mocha": "^6.2.0"
   }
 }
